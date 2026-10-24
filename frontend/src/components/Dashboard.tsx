@@ -1,0 +1,15 @@
+import { ArrowRight, CalendarClock, LockKeyhole, Sparkles } from "lucide-react";
+import { Sidebar } from "@/components/Sidebar";
+import { Topbar } from "@/components/Topbar";
+import { KpiCards } from "@/components/KpiCards";
+import { HedgeChart } from "@/components/HedgeChart";
+import { SmartInsights } from "@/components/SmartInsights";
+import { AgentTerminal } from "@/components/AgentTerminal";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useAgent } from "@/context/AgentContext";
+
+export function Dashboard() {
+  const { isLoading, agentAddress } = useAgent();
+  return <div className="relative min-h-screen overflow-hidden bg-graphite text-slate-100"><div className="pointer-events-none absolute inset-0 grid-noise opacity-70" /><div className="relative flex min-h-screen"><Sidebar /><main className="min-w-0 flex-1"><Topbar /><div className="mx-auto max-w-[1500px] px-5 pb-10 pt-7 sm:px-8 lg:px-10"><div className="mb-7 flex flex-wrap items-end justify-between gap-5"><div><div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.2em] text-mint"><span className="h-1.5 w-1.5 rounded-full bg-mint pulse-soft" />Autonomous protection layer</div><h1 className="text-3xl font-semibold tracking-[-.04em] text-white sm:text-4xl">Good morning, operator.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">Your hedge agent is monitoring Argentina inflation and protecting treasury value across Celo Mainnet.</p></div><div className="flex items-center gap-2"><Badge tone="info"><LockKeyhole size={12} />Non-custodial read layer</Badge><Badge tone="neutral"><CalendarClock size={12} />Next scan in 04:32</Badge></div></div><KpiCards /><div className="mt-5 flex flex-col gap-5 xl:flex-row"><HedgeChart /><SmartInsights /></div><Card className="mt-5 flex flex-wrap items-center justify-between gap-4 border-mint/15 bg-mint/[.035] p-4 sm:px-5"><div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-mint/10 text-mint"><Sparkles size={17} /></div><div><div className="text-sm font-semibold text-slate-200">Your protection policy is active</div><div className="mt-0.5 text-xs text-slate-500">The agent will request a Textile FX RFQ when inflation crosses the configured threshold.</div></div></div><div className="flex items-center gap-2 font-mono text-[10px] text-slate-600">{agentAddress ? `${agentAddress.slice(0, 10)}…${agentAddress.slice(-6)}` : "AGENT WALLET PENDING"}<ArrowRight size={13} className="text-mint" /></div></Card><div className="mt-7 mb-3 flex items-center justify-between"><div><div className="text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Observability</div><div className="mt-1 text-lg font-semibold text-white">Agent terminal</div></div><div className="font-mono text-[10px] text-slate-600">{isLoading ? "SYNCING PUBLIC STATE" : "PUBLIC BALANCE SYNCED"}</div></div><AgentTerminal /></div></main></div></div>;
+}
