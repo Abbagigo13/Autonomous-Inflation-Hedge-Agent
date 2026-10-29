@@ -10,7 +10,8 @@ export const ERC8004_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
 export const ATTRIBUTION_TAG = "celo_09b7d0a51f16";
 export const ATTRIBUTION_HEX = `0x${Buffer.from(ATTRIBUTION_TAG, "utf8").toString("hex")}`;
 export const PORT = Number(process.env.PORT ?? 3000);
-export const HEDGE_THRESHOLD = Number(process.env.INFLATION_HEDGE_THRESHOLD ?? 5);
+// Year-over-year inflation (in percent) at which the agent hedges.
+export const HEDGE_THRESHOLD = Number(process.env.INFLATION_HEDGE_THRESHOLD ?? 30);
 export const HEDGE_SELL_AMOUNT = process.env.HEDGE_SELL_AMOUNT ?? "1";
 export const DRY_RUN = (process.env.DRY_RUN ?? "true").toLowerCase() === "true";
 

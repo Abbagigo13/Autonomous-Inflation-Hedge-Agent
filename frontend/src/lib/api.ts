@@ -3,11 +3,65 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 export type LogLevel = "info" | "success" | "warning" | "error";
 export type LogEvent = { id: string; timestamp: string; message: string; level: LogLevel };
 
-export async function getAgentConfig() {
-  const response = await fetch(`${API_BASE}/api/config`);
-  if (!response.ok) throw new Error(`Config request failed: ${response.status}`);
-  return response.json() as Promise<{ agentAddress: string; chainId: number; rpcUrl: string; warsAddress: string; usdtAddress: string }>;
+export type HistoryEntry = {
+  id: string;
+  timestamp: string;
+  inflationRate: number;
+  hedgeTriggered: boolean;
+  executed: boolean;
+  txHash?: string;
+  reason?: string;
+  dryRun: boolean;
+  sellAmount: string;
+};
+
+export type AgentConfig = {
+  agentAddress: string;
+  chainId: number;
+  rpcUrl: string;
+  warsAddress: string;
+  usdtAddress: string;
+  isDryRun: boolean;
+  threshold: number;
+  sellAmount: string;
+  attributionTag: string;
+};
+
+export type Treasury = { address: string; wars: string; usdt: string; celo: string };
+
+export type IdentityInfo = {
+  address: string;
+  registry: string;
+  registered: boolean | null;
+  attributionTag: string;
+  capabilities: string[];
+};
+
+export type RouteInfo = {
+  id: string;
+  provider: string;
+  method: string;
+  sellToken: string;
+  buyToken: string;
+  sellTokenAddress: string;
+  buyTokenAddress: string;
+  chainId: number;
+  sellAmount: string;
+  threshold: number;
+  mode: string;
+};
+
+async function getJson<T>(path: string, label: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) throw new Error(`${label} request failed: ${response.status}`);
+  return response.json() as Promise<T>;
 }
+
+export const getAgentConfig = () => getJson<AgentConfig>("/api/config", "Config");
+export const getHistory = () => getJson<HistoryEntry[]>("/api/history", "History");
+export const getTreasury = () => getJson<Treasury>("/api/treasury", "Treasury");
+export const getIdentity = () => getJson<IdentityInfo>("/api/identity", "Identity");
+export const getRoutes = () => getJson<RouteInfo[]>("/api/routes", "Routes");
 
 export async function requestAgentRun() {
   const response = await fetch(`${API_BASE}/api/run-agent`, { method: "POST", headers: { "Content-Type": "application/json" } });

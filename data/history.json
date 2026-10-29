@@ -1,0 +1,73 @@
+[
+  {
+    "id": "b04a360d-bd21-4309-83ce-4f712b44f343",
+    "timestamp": "2026-10-26T10:52:20.119Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "quote-rejected",
+    "dryRun": true,
+    "sellAmount": "17"
+  },
+  {
+    "id": "76ccdfb8-4cf8-4efe-ba16-7a67f070ca96",
+    "timestamp": "2026-10-28T10:17:08.196Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "no-transaction",
+    "dryRun": true,
+    "sellAmount": "1750"
+  },
+  {
+    "id": "e1589012-c122-4dba-8e24-f83de769087b",
+    "timestamp": "2026-10-28T10:20:10.182Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "no-transaction",
+    "dryRun": true,
+    "sellAmount": "1750"
+  },
+  {
+    "id": "1f7cede3-c9dc-4526-9089-6c82f59ffaa8",
+    "timestamp": "2026-10-28T10:26:27.363Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "dry-run-prepared",
+    "dryRun": true,
+    "sellAmount": "1750"
+  },
+  {
+    "id": "d7ffaa81-be2d-46e7-9ef9-2bfc94a64b33",
+    "timestamp": "2026-10-28T10:49:27.876Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "dry-run-prepared",
+    "dryRun": true,
+    "sellAmount": "1750"
+  },
+  {
+    "id": "9b514a68-e8ac-4fc4-a530-83c94ac1326d",
+    "timestamp": "2026-10-29T16:16:20.836Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "dry-run-prepared",
+    "dryRun": true,
+    "sellAmount": "1750"
+  },
+  {
+    "id": "3e62e006-ee21-42fe-82d0-cfd92ec7e24f",
+    "timestamp": "2026-10-29T16:19:56.600Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": true,
+    "txHash": "0xcec8d8e0fb3418076737409838b167bd8cdcbe64c7c9b850c9dae2405bce0d9b",
+    "reason": "executed",
+    "dryRun": false,
+    "sellAmount": "1750"
+  }
+]

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ethers } from "ethers";
-import { API_BASE, getAgentConfig, requestAgentRun, type LogEvent } from "@/lib/api";
+import { API_BASE, getAgentConfig, getHistory, requestAgentRun, type AgentConfig, type HistoryEntry, type LogEvent } from "@/lib/api";
 
 export type AgentContextValue = {
   isLoading: boolean;
@@ -8,8 +8,12 @@ export type AgentContextValue = {
   balanceUsdt: string;
   balanceWars: string;
   logs: LogEvent[];
-  inflationRate: number;
+  config: AgentConfig | null;
+  lastRun: HistoryEntry | null;
+  inflationRate: number | null;
+  streamConnected: boolean;
   agentAddress: string;
+  runCount: number;
   runAgent: () => Promise<void>;
   refreshBalances: () => Promise<void>;
 };
@@ -26,17 +30,30 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [balanceUsdt, setBalanceUsdt] = useState("0");
   const [balanceWars, setBalanceWars] = useState("0");
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
+  const [lastRun, setLastRun] = useState<HistoryEntry | null>(null);
+  const [streamConnected, setStreamConnected] = useState(false);
   const [agentAddress, setAgentAddress] = useState(import.meta.env.VITE_AGENT_WALLET_ADDRESS ?? "");
-  const [inflationRate, setInflationRate] = useState(8.4);
+  const [runCount, setRunCount] = useState(0);
 
   const pushUiLog = useCallback((message: string, level: LogEvent["level"]) => {
-    setLogs((current) => [...current, { id: `ui-${Date.now()}`, timestamp: new Date().toISOString(), message, level }].slice(-150));
+    const id = `ui-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setLogs((current) => [...current, { id, timestamp: new Date().toISOString(), message, level }].slice(-150));
+  }, []);
+
+  const refreshLastRun = useCallback(async () => {
+    try {
+      const entries = await getHistory();
+      setLastRun(entries[0] ?? null);
+    } catch {
+      // The backend may be offline; keep whatever we already know.
+    }
   }, []);
 
   const refreshBalances = useCallback(async () => {
-    setIsLoading(true);
     try {
       const config = await getAgentConfig();
+      setAgentConfig(config);
       const address = import.meta.env.VITE_AGENT_WALLET_ADDRESS || config.agentAddress;
       setAgentAddress((current) => current || config.agentAddress);
       if (!address || !ethers.isAddress(address)) return;
@@ -53,24 +70,25 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
   }, [pushUiLog]);
 
-  useEffect(() => { void refreshBalances(); }, [refreshBalances]);
+  useEffect(() => {
+    void refreshBalances();
+    void refreshLastRun();
+  }, [refreshBalances, refreshLastRun]);
 
   useEffect(() => {
     const events = new EventSource(`${API_BASE}/api/logs`);
+    events.onopen = () => setStreamConnected(true);
     events.onmessage = (event) => {
       try {
         const log = JSON.parse(event.data) as LogEvent;
         setLogs((current) => [...current, log].slice(-150));
-        const match = log.message.match(/Inflation signal: ([\d.]+)%/);
-        if (match) setInflationRate(Number(match[1]));
-        if (/cycle requested|preparing protective/i.test(log.message)) setIsExecuting(true);
-        if (/confirmed|blocked|failed|below threshold|not configured/i.test(log.message)) setIsExecuting(false);
       } catch {
         // Ignore malformed SSE frames; the connection remains useful for subsequent events.
       }
     };
     events.onerror = () => {
-      // EventSource retries automatically; keep the stream open for transient outages.
+      // EventSource retries automatically; show the connection as down until it recovers.
+      setStreamConnected(false);
     };
     return () => events.close();
   }, []);
@@ -80,12 +98,35 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     try {
       await requestAgentRun();
     } catch (error) {
-      setIsExecuting(false);
       pushUiLog(error instanceof Error ? error.message : "Unable to start agent", "error");
+    } finally {
+      setIsExecuting(false);
+      setRunCount((count) => count + 1);
+      void refreshBalances();
+      void refreshLastRun();
     }
-  }, [pushUiLog]);
+  }, [pushUiLog, refreshBalances, refreshLastRun]);
 
-  const value = useMemo(() => ({ isLoading, isExecuting, balanceUsdt, balanceWars, logs, inflationRate, agentAddress, runAgent, refreshBalances }), [isLoading, isExecuting, balanceUsdt, balanceWars, logs, inflationRate, agentAddress, runAgent, refreshBalances]);
+  const inflationRate = lastRun ? lastRun.inflationRate : null;
+
+  const value = useMemo(
+    () => ({
+      isLoading,
+      isExecuting,
+      balanceUsdt,
+      balanceWars,
+      logs,
+      config: agentConfig,
+      lastRun,
+      inflationRate,
+      streamConnected,
+      agentAddress,
+      runCount,
+      runAgent,
+      refreshBalances
+    }),
+    [isLoading, isExecuting, balanceUsdt, balanceWars, logs, agentConfig, lastRun, inflationRate, streamConnected, agentAddress, runCount, runAgent, refreshBalances]
+  );
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;
 }
 

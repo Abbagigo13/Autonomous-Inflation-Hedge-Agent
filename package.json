@@ -14,11 +14,13 @@
     "clean": "rm -rf dist frontend/dist"
   },
   "dependencies": {
+    "@celo/attribution-tags": "^0.5.0",
     "axios": "^1.20.0",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "ethers": "^6.17.0",
-    "express": "^4.22.3"
+    "express": "^4.22.3",
+    "viem": "^2.57.13"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

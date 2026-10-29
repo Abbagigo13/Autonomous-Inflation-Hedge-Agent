@@ -1,79 +1,104 @@
 # Autonomous Inflation Hedge Agent
 
-**Autonomous protection for wARS treasury value on Celo Mainnet.**
+**An agent that reads Argentina's official inflation data and, when it crosses a threshold, requests a wARS → USDT swap on Celo Mainnet through Textile FX.**
 
-This full-stack hackathon implementation monitors a configurable Argentina inflation signal, decides when a policy threshold is breached, requests a wARS → USDT route quote through Textile FX, and prepares or broadcasts the returned transaction from a server-side agent wallet. The dashboard makes policy state, public token balances, and the execution trail visible without exposing private credentials.
+Built for the Agents on Open Rails hackathon (Celo). Targets **Stable Agents: LatAm** and **Stable Agents: Open Corridors**.
 
-## Why this matters
+## Current status
 
-Inflationary local-currency exposure can lose value faster than a treasury operator can react. The agent turns a macro signal into a deterministic protection policy: observe, compare with threshold, request a route, verify execution prerequisites, add attribution, and settle into USDT. Celo makes the workflow inexpensive enough for frequent monitoring while ERC-8004 makes the operator identity legible onchain.
+| Area | Status |
+| --- | --- |
+| Real inflation data (INDEC, via datos.gob.ar) | Working |
+| Textile FX quote request | Working; the quote is rejected below Textile's minimum trade size |
+| ERC-8004 identity | Agent wallet is registered; the dashboard checks the registry live |
+| Attribution tag on every transaction the agent builds | Implemented (swap, approval, registration) |
+| First live end-to-end swap on Celo Mainnet | **Pending** (needs about 1,700+ wARS in the agent wallet) |
+| Scheduled / unattended runs | Not built yet; a run starts when the operator clicks the button |
 
-## Tracks and integrations
+## How it works
 
-The implementation targets the **Stable Agents: LatAm** track through the Argentina/wARS inflation-hedge use case and **Open Corridors** through Textile FX RFQ routing on Celo. ERC-8004 provides the identity registration path. The attribution value `celo_09b7d0a51f16` is encoded as hex and appended to the provider transaction data before submission. x402 is documented as a future payment/authorization rail rather than fabricated as an active dependency; the current live execution rail is Textile FX.
+1. **Read inflation.** The agent downloads the last 13 monthly values of INDEC's national consumer price index (series `148.3_INIVELNAL_DICI_M_26`) and calculates year-over-year inflation itself.
+2. **Validate.** The data must be 13 consecutive months, not older than 120 days, and in a sane range. If anything looks wrong, the run stops with an error. It never falls back to a made-up number.
+3. **Compare.** If year-over-year inflation is at or above the trigger (default **30%**, set with `INFLATION_HEDGE_THRESHOLD`), a hedge is needed. At the time of writing the latest available reading is **33.5% (August 2026)**.
+4. **Request a quote.** The agent asks Textile FX for an RFQ to sell `HEDGE_SELL_AMOUNT` wARS for USDT.
+5. **Prepare the transaction.** It checks the wallet has enough CELO for gas, adds the attribution tag `celo_09b7d0a51f16` to the transaction data, and, if the quote names who may spend the wARS, prepares an approval for exactly the sell amount (also tagged).
+6. **Dry run or live.** With `DRY_RUN=true` (the default) nothing is sent. With `DRY_RUN=false` the approval and swap are broadcast, and the agent reads the swap back from the chain to log whether the tag is present. In live mode it refuses to send if the quote does not name an approval target.
+7. **Record.** Every run is saved to `data/history.json` and shown on the dashboard.
 
-## Repository layout
+Textile enforces a minimum trade size. It was about 1,640 wARS when tested and moves with the exchange rate, so `HEDGE_SELL_AMOUNT` must be above it.
 
-`src/agent.ts` contains the cycle, inflation signal, Textile request, transaction preparation, attribution injection, and error handling. `src/register-identity.ts` is a one-shot ERC-8004 identity registration script. `server.ts` exposes health/config APIs, live SSE logs, and the run endpoint while serving the compiled frontend. `frontend/src/context/AgentContext.tsx` reads public token balances from Forno and owns UI execution state. `frontend/src/components` contains the premium dark dashboard and live terminal. The root markdown files provide the product, design, security, architecture, judging, and testing handoff.
+## Dashboard
 
-## Requirements
+React + Vite, all pages read real data:
 
-Use Node.js 20+ and npm or pnpm. A Textile API key and a funded Celo agent wallet are required for live settlement. Registration requires native CELO for gas. The public dashboard can still be previewed without those secrets; it shows a blocked execution state rather than pretending a trade settled.
+- **Overview:** wallet balances, latest inflation figure, signal history chart, last run result, live agent terminal (server-sent events).
+- **Hedge history:** every saved run, with Celoscan links for executed transactions.
+- **Execution routes:** the route the agent uses, read from its configuration.
+- **Treasury:** live wARS, USDT and CELO balances, and whether the wARS balance covers the configured hedge.
+- **Identity:** live check of the wallet in the ERC-8004 registry.
 
-## Setup
+## Setup (development mode)
+
+Requires Node.js 20+.
 
 ```bash
 cp .env.example .env
 npm install
 npm --prefix frontend install
-npm run build
-npm run dev
 ```
 
-The service listens on `http://localhost:3000`. It serves the compiled frontend from `frontend/dist`, plus `/api/health`, `/api/config`, `/api/logs`, and `/api/run-agent`. For frontend-only hot reload, run `npm --prefix frontend run dev` separately; Vite proxies `/api` to port 3000.
+Fill in `.env` (never commit it): `AGENT_PRIVATE_KEY` and `TEXTILE_API_KEY` are required. Optional: `AGENT_WALLET_ADDRESS`, `INFLATION_HEDGE_THRESHOLD`, `HEDGE_SELL_AMOUNT`, `DRY_RUN`, `PORT`, `TEXTILE_API_BASE_URL`.
 
-Set `AGENT_PRIVATE_KEY`, `AGENT_WALLET_ADDRESS`, and `TEXTILE_API_KEY` in `.env` for live use. Keep `DRY_RUN=true` while validating RFQ responses. Set `DRY_RUN=false` only after independently inspecting the returned `to`, `data`, `value`, and gas fields against the corridor contract and confirming the wallet has enough CELO for gas. The dashboard uses `VITE_AGENT_WALLET_ADDRESS` when supplied; otherwise it reads the public wallet address from `/api/config`.
+Run two terminals:
 
-## Register the ERC-8004 identity
+```bash
+# Terminal 1: backend on http://localhost:3000
+npx tsx server.ts
 
-After funding the wallet and checking the registry ABI/network, run:
+# Terminal 2: dashboard on http://localhost:5173
+npm --prefix frontend run dev
+```
+
+Open `http://localhost:5173`. Vite forwards `/api` requests to the backend. A production build that serves the dashboard from the backend is not implemented yet.
+
+## Backend API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/config` | Network, wallet address, mode, threshold, sell amount |
+| `GET /api/logs` | Live log stream (server-sent events) |
+| `POST /api/run-agent` | Runs one cycle and returns when it finishes (one at a time) |
+| `GET /api/history` | Saved runs, newest first |
+| `GET /api/treasury` | wARS, USDT and CELO balances of the agent wallet |
+| `GET /api/identity` | ERC-8004 registration status |
+| `GET /api/routes` | The configured execution route |
+
+## ERC-8004 identity
 
 ```bash
 npm run register:identity
 ```
 
-The script creates a JSON metadata document with the agent name, chain, wallet, capabilities, and attribution tag. It base64-encodes that JSON into a `data:application/json;base64,...` URI and calls `register(string agentURI)` on the Celo Mainnet registry at `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`.
+The script checks the registry first and does nothing if the wallet is already registered (use `--force` to override). New registrations are sent with the attribution tag, and the script confirms the tag on-chain afterwards. The identity metadata lists the agent's capabilities and tag.
 
-## Agent cycle
+## Attribution tag
 
-The default demo signal returns `8.4%`. The policy threshold defaults to `5%` and is configured by `INFLATION_HEDGE_THRESHOLD`. When the signal is below threshold, the cycle exits without requesting a quote. When the signal is above threshold, the agent submits this exact Textile payload shape:
+Every transaction the agent builds goes through one helper (`src/attribution.ts`), which appends the tag and refuses to send if it is missing.
 
-```json
-{
-  "chainId": 42220,
-  "taker": "<agent wallet>",
-  "sellToken": "0x0dc4f92879b7670e5f4e4e6e3c801d229129d90d",
-  "buyToken": "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e",
-  "sellAmount": "<base-unit amount>"
-}
-```
+## Known limitations
 
-The implementation handles absent credentials, no RFQ corridor, insufficient native balance, invalid transaction data, provider errors, and dry-run mode. The API responds immediately to a run request while the cycle streams progress to all connected SSE clients.
+- A run starts only when the operator clicks the button; there is no scheduler yet.
+- `POST /api/run-agent` has no authentication. The server only accepts browser requests from localhost, so run it locally.
+- The agent signs with a server-side wallet key. Use a dedicated wallet with a small balance.
+- INDEC's open-data feed lags the press release, so the newest month it provides may be one month behind.
+- The approval target is read from the Textile quote; if the quote does not name one, live swaps are blocked. This is verified against a real quote only after the wallet is funded.
+- Not financial advice. Textile response formats can change.
 
-## Roadmap
+## Roadmap (planned, not built)
 
-### Achieved
-
-A working Celo Mainnet configuration, ERC-8004 registration script, Textile RFQ adapter, attribution-tagged transaction preparation, Express SSE observability, real Forno ERC-20 balance reads, responsive dashboard, Recharts allocation history, skeleton loading state, and documentation are included.
-
-### In progress
-
-Replace the mock inflation function with a signed Argentina CPI source or trusted oracle; persist completed hedge events and quote outcomes; add role-based operator controls; and add a scheduled runner with alerting for blocked corridors and low gas.
-
-### Future vision
-
-The agent can become a multi-country protection network with policy templates for ARS, BRL, MXN, and COP exposure, route-quality scoring across open corridors, x402-based paid data/agent services, formal transaction simulation, and a composable ERC-8004 capability registry that lets other agents request protection for their treasury.
-
-## Safety note
-
-This code is an execution template, not financial advice. Textile response schemas and corridor requirements can change. Keep dry-run mode enabled until the returned transaction is validated in a fork or controlled wallet, and never commit `.env`, private keys, or API keys.
+- Scheduled runner with alerts for low gas and failed quotes
+- Operator authentication for the run endpoint
+- Paid data access over x402, if a suitable data provider is found (the official INDEC feed is free)
+- Additional corridors (wBRL, wMXN, wCOP), each with its own official inflation source
+- Non-custodial user vaults and a MiniPay mini app (these need security review before holding user funds)
+- Routing hedged USDT into yield protocols
