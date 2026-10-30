@@ -35,6 +35,13 @@ const ERC20_APPROVAL_ABI = [
 ] as const;
 const erc20Interface = new ethers.Interface(ERC20_APPROVAL_ABI);
 
+export type RunOptions = {
+  /** true = prepare only, false = send real transactions. Defaults to the DRY_RUN setting in .env. */
+  dryRun?: boolean;
+  /** A what-if trigger (percent). Only honoured in dry-run, so it can never cause a real swap. */
+  thresholdOverride?: number;
+};
+
 type SwapOutcome = { txHash?: string; reason: string };
 type QuoteTx = { to: string; data: string; value: bigint };
 type ParsedQuote = {
@@ -174,7 +181,7 @@ async function confirmTagOnChain(hash: string, label: string, log: AgentLogger):
 }
 
 /** Makes sure the spender may move exactly `amount` wARS. The approval is tagged like every other transaction. */
-async function ensureAllowance(wallet: ethers.Wallet, spender: string, amount: bigint, log: AgentLogger): Promise<boolean> {
+async function ensureAllowance(wallet: ethers.Wallet, spender: string, amount: bigint, log: AgentLogger, dryRun: boolean): Promise<boolean> {
   const token = new ethers.Contract(WARS_ADDRESS, ERC20_APPROVAL_ABI, wallet);
   const current = (await token.allowance(wallet.address, spender)) as bigint;
   if (current >= amount) {
@@ -186,8 +193,8 @@ async function ensureAllowance(wallet: ethers.Wallet, spender: string, amount: b
   if (!hasAttributionTag(data)) throw new Error("Attribution tag missing on approval; refusing to send");
   const request = { to: WARS_ADDRESS, data, value: 0n };
 
-  if (DRY_RUN) {
-    log(`DRY_RUN=true · would approve exactly ${ethers.formatUnits(amount, 18)} wARS to ${spender} (tagged)`, "warning");
+  if (dryRun) {
+    log(`Simulation · would approve exactly ${ethers.formatUnits(amount, 18)} wARS to ${spender} (tagged)`, "warning");
     return false;
   }
 
@@ -200,7 +207,7 @@ async function ensureAllowance(wallet: ethers.Wallet, spender: string, amount: b
   return true;
 }
 
-export async function executeSwap(log: AgentLogger): Promise<SwapOutcome> {
+export async function executeSwap(log: AgentLogger, dryRun: boolean): Promise<SwapOutcome> {
   const wallet = getWallet();
   if (!wallet) {
     log("AGENT_PRIVATE_KEY is not configured; swap execution is blocked", "error");
@@ -267,7 +274,7 @@ export async function executeSwap(log: AgentLogger): Promise<SwapOutcome> {
     const targets = [...new Set([quote.swap.to, quote.spender].map((address) => ethers.getAddress(address)))];
     if (!targets.every((address) => allowedTargets.includes(address.toLowerCase()))) {
       log(`Contracts not allowlisted yet · after checking them on Celoscan, add this line to .env: TEXTILE_ALLOWED_ADDRESSES=${targets.join(",")}`, "warning");
-      if (!DRY_RUN) {
+      if (!dryRun) {
         log("Live mode requires every contract to be in TEXTILE_ALLOWED_ADDRESSES; refusing to send", "error");
         return { reason: "quote-unsafe" };
       }
@@ -294,20 +301,20 @@ export async function executeSwap(log: AgentLogger): Promise<SwapOutcome> {
     const left = secondsLeft(quote);
     if (left === null) {
       log(`Quote expiry "${quote.expiresAt}" could not be read`, "warning");
-      if (!DRY_RUN) return { reason: "quote-unsafe" };
+      if (!dryRun) return { reason: "quote-unsafe" };
     } else {
       log(`Quote is valid for another ${left} seconds`, left > 0 ? "info" : "warning");
-      if (!DRY_RUN && left < 15) {
+      if (!dryRun && left < 15) {
         log("Quote expires too soon to use safely; run the agent again", "warning");
         return { reason: "quote-expired" };
       }
     }
 
     // Token approval for exactly what the quote needs (also tagged)
-    await ensureAllowance(wallet, quote.spender, quote.takerPays, log);
+    await ensureAllowance(wallet, quote.spender, quote.takerPays, log, dryRun);
 
-    if (DRY_RUN) {
-      log(`DRY_RUN=true · swap prepared (${(swapData.length - 2) / 2} bytes of calldata, tag attached) but not broadcast`, "warning");
+    if (dryRun) {
+      log(`Simulation · swap prepared (${(swapData.length - 2) / 2} bytes of calldata, tag attached) but not broadcast`, "warning");
       return { reason: "dry-run-prepared" };
     }
 
@@ -341,22 +348,33 @@ export async function executeSwap(log: AgentLogger): Promise<SwapOutcome> {
   }
 }
 
-export async function runAgentCycle(log: AgentLogger = (message, level) => console.log(`[${level ?? "info"}] ${message}`)): Promise<CycleResult> {
+export async function runAgentCycle(
+  log: AgentLogger = (message, level) => console.log(`[${level ?? "info"}] ${message}`),
+  options: RunOptions = {}
+): Promise<CycleResult> {
+  const dryRun = options.dryRun ?? DRY_RUN;
+  // A what-if trigger is only honoured in simulation, so it can never cause a real swap.
+  const whatIf = dryRun && options.thresholdOverride !== undefined && Number.isFinite(options.thresholdOverride);
+  const threshold = whatIf ? (options.thresholdOverride as number) : HEDGE_THRESHOLD;
+
+  log(`Run mode · ${dryRun ? "simulation (nothing is sent)" : "LIVE (real transactions)"}`, dryRun ? "info" : "warning");
+  if (whatIf) log(`What-if trigger · ${threshold}% instead of the configured ${HEDGE_THRESHOLD}%`, "info");
+
   log("Reading Argentina inflation from INDEC (datos.gob.ar)", "info");
   // If this fails it throws, so the run stops instead of using a made-up number.
   const reading = await fetchInflation();
   const inflationRate = reading.yearOverYearPct;
   log(`Series check · ${reading.seriesTitle}`, "info");
   log(
-    `Inflation signal: ${inflationRate.toFixed(1)}% year over year (${reading.period}) · hedge threshold: ${HEDGE_THRESHOLD.toFixed(1)}%`,
-    inflationRate >= HEDGE_THRESHOLD ? "warning" : "info"
+    `Inflation signal: ${inflationRate.toFixed(1)}% year over year (${reading.period}) · hedge threshold: ${threshold.toFixed(1)}%`,
+    inflationRate >= threshold ? "warning" : "info"
   );
-  if (inflationRate < HEDGE_THRESHOLD) {
+  if (inflationRate < threshold) {
     log("Signal below threshold · no hedge required", "success");
     return { inflationRate, hedgeTriggered: false, executed: false, reason: "below-threshold" };
   }
   log("Threshold breached · preparing protective hedge", "warning");
-  const outcome = await executeSwap(log);
+  const outcome = await executeSwap(log, dryRun);
   return {
     inflationRate,
     hedgeTriggered: true,

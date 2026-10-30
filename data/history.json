@@ -69,5 +69,28 @@
     "reason": "executed",
     "dryRun": false,
     "sellAmount": "1750"
+  },
+  {
+    "id": "6285007c-4cb9-4db9-a115-1c4a039a92a0",
+    "timestamp": "2026-10-30T14:08:06.717Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": true,
+    "executed": false,
+    "reason": "quote-rejected",
+    "dryRun": true,
+    "sellAmount": "1750",
+    "source": "scheduled"
+  },
+  {
+    "id": "34bf2924-983e-43df-9f2a-f4f6ab3cf21b",
+    "timestamp": "2026-10-30T20:44:09.814Z",
+    "inflationRate": 33.54117291414029,
+    "hedgeTriggered": false,
+    "executed": false,
+    "reason": "below-threshold",
+    "dryRun": true,
+    "sellAmount": "1750",
+    "source": "manual",
+    "whatIfThreshold": 40
   }
 ]

@@ -3,6 +3,7 @@ import { Sidebar, PAGES, type PageId } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { Dashboard } from "@/components/Dashboard";
 import { HistoryPage } from "@/components/HistoryPage";
+import { PnlPage } from "@/components/PnlPage";
 import { RoutesPage } from "@/components/RoutesPage";
 import { TreasuryPage } from "@/components/TreasuryPage";
 import { IdentityPage } from "@/components/IdentityPage";
@@ -51,6 +52,7 @@ export function App() {
           <div className="mx-auto max-w-[1500px] px-5 pb-10 pt-7 sm:px-8 lg:px-10">
             {page === "overview" && <Dashboard />}
             {page === "history" && <HistoryPage />}
+            {page === "pnl" && <PnlPage />}
             {page === "routes" && <RoutesPage />}
             {page === "treasury" && <TreasuryPage />}
             {page === "identity" && <IdentityPage />}

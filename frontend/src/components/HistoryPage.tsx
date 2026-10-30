@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgent } from "@/context/AgentContext";
 import { formatNumber, getHistory, type HistoryEntry } from "@/lib/api";
+import { describeReason } from "@/lib/reasons";
 
 function outcome(entry: HistoryEntry) {
-  if (entry.executed) return { label: "Executed", tone: "success" as const };
-  if (!entry.hedgeTriggered) return { label: "No hedge needed", tone: "neutral" as const };
-  return { label: "Not executed", tone: "warning" as const };
+  if (entry.executed) return { label: "Executed", tone: "success" as const, detail: "The hedge transaction was sent and confirmed." };
+  return describeReason(entry.reason);
 }
 
 export function HistoryPage() {
@@ -44,7 +44,7 @@ export function HistoryPage() {
         <div className="text-[10px] font-semibold uppercase tracking-[.2em] text-mint">Audit trail</div>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-.04em] text-white sm:text-4xl">Hedge history</h1>
         <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-          Every time the agent runs, the result is saved here. Executed hedges link to their transaction on Celoscan.
+          Every time the agent runs, the result is saved here. Executed hedges link to their transaction on Celoscan. Runs started by the autopilot are marked "Auto".
         </p>
       </div>
 
@@ -100,9 +100,10 @@ export function HistoryPage() {
                         <td className="py-3 pr-4">{entry.inflationRate.toFixed(1)}%</td>
                         <td className="py-3 pr-4">{formatNumber(entry.sellAmount, 2)} wARS</td>
                         <td className="py-3 pr-4">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2" title={result.detail}>
                             <Badge tone={result.tone}>{result.label}</Badge>
                             {entry.dryRun && <Badge tone="info">Dry run</Badge>}
+                            {entry.source === "scheduled" && <Badge tone="neutral">Auto</Badge>}
                           </div>
                         </td>
                         <td className="py-3">
