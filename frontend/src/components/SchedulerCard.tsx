@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgent } from "@/context/AgentContext";
-import { formatNumber, getScheduler, pauseScheduler, resumeScheduler, type SchedulerStatus } from "@/lib/api";
+import { formatNumber, getOperatorToken, getScheduler, pauseScheduler, resumeScheduler, setOperatorToken, type SchedulerStatus } from "@/lib/api";
 
 function when(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -19,12 +19,20 @@ function everyText(minutes: number) {
   return `${minutes} minutes`;
 }
 
+const inputClass = "h-9 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-mint/40";
+
 export function SchedulerCard() {
-  const { runCount } = useAgent();
+  const { runCount, capabilities, refreshCapabilities } = useAgent();
   const [status, setStatus] = useState<SchedulerStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [showLogin, setShowLogin] = useState(false);
+  const [tokenInput, setTokenInput] = useState("");
+  const [loginNotice, setLoginNotice] = useState("");
+
+  const isOperator = capabilities?.operator === true;
+  const signedIn = getOperatorToken() !== "";
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +66,25 @@ export function SchedulerCard() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const signIn = async () => {
+    setOperatorToken(tokenInput.trim());
+    const next = await refreshCapabilities();
+    if (next?.operator) {
+      setLoginNotice("Signed in as operator.");
+      setShowLogin(false);
+      setTokenInput("");
+    } else {
+      setOperatorToken("");
+      setLoginNotice("That token was not accepted.");
+    }
+  };
+
+  const signOut = async () => {
+    setOperatorToken("");
+    setLoginNotice("");
+    await refreshCapabilities();
   };
 
   const rows = status
@@ -102,27 +129,53 @@ export function SchedulerCard() {
                 </div>
               ))}
             </div>
-            {!status.active && status.pausedReason && (
-              <p className="mt-3 text-sm text-amber">Paused: {status.pausedReason}</p>
-            )}
+            {!status.active && status.pausedReason && <p className="mt-3 text-sm text-amber">Paused: {status.pausedReason}</p>}
             {status.consecutiveFailures > 0 && (
               <p className="mt-3 text-xs text-slate-500">
                 Failed runs in a row: {status.consecutiveFailures} of {status.maxFailures} (it pauses itself at {status.maxFailures}).
               </p>
             )}
+
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button variant={status.active ? "outline" : "primary"} onClick={() => void toggle()} disabled={busy}>
-                {status.active ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
-                {status.active ? "Pause autopilot" : "Resume autopilot"}
-              </Button>
+              {isOperator ? (
+                <>
+                  <Button variant={status.active ? "outline" : "primary"} onClick={() => void toggle()} disabled={busy}>
+                    {status.active ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
+                    {status.active ? "Pause autopilot" : "Resume autopilot"}
+                  </Button>
+                  {signedIn && (
+                    <button onClick={() => void signOut()} className="text-xs text-slate-500 hover:text-slate-200">
+                      Sign out of operator mode
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="text-sm text-slate-500">Only the operator can pause or resume the autopilot.</span>
+                  <button onClick={() => setShowLogin((value) => !value)} className="text-xs text-electric hover:underline">
+                    Operator login
+                  </button>
+                </>
+              )}
               {notice && <span className="text-sm text-amber">{notice}</span>}
             </div>
+
+            {!isOperator && showLogin && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input type="password" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} placeholder="Operator token" className={`${inputClass} w-64`} />
+                <Button variant="outline" onClick={() => void signIn()} disabled={tokenInput.trim().length === 0}>
+                  Sign in
+                </Button>
+              </div>
+            )}
+            {loginNotice && <p className="mt-2 text-xs text-slate-500">{loginNotice}</p>}
+
             <p className="mt-4 text-xs leading-5 text-slate-600">
               {status.mode === "dry-run"
                 ? "Dry run: scheduled runs read the data and request quotes, but nothing is sent. "
                 : "Live mode: scheduled runs send real transactions. "}
               Limits when live: one hedge per {status.cooldownHours} hours, up to {formatNumber(status.maxDailySellWars, 0)} wARS per day, and it skips a check when the wallet
-              holds less wARS than the hedge amount. You can still run the agent by hand with the button at the top.
+              holds less wARS than the hedge amount.
             </p>
           </>
         )}

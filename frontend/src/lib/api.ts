@@ -13,7 +13,8 @@ export type HistoryEntry = {
   reason?: string;
   dryRun: boolean;
   sellAmount: string;
-  source?: "manual" | "scheduled";
+  source?: "manual" | "scheduled" | "public";
+  whatIfThreshold?: number;
 };
 
 export type AgentConfig = {
@@ -87,20 +88,74 @@ export type SchedulerStatus = {
   accepted?: boolean;
 };
 
+export type Capabilities = {
+  operator: boolean;
+  liveEnabled: boolean;
+  demoCodeRequired: boolean;
+  defaultMode: "simulate" | "live";
+  simulationCooldownSeconds: number;
+  liveCooldownMinutes: number;
+  maxPublicLiveSwaps: number;
+  publicLiveSwapsUsed: number;
+};
+
+export type RunOptions = { mode?: "simulate" | "live"; demoCode?: string; thresholdOverride?: number };
+
+export type RunResult = {
+  ok: boolean;
+  status: string;
+  dryRun: boolean;
+  inflationRate: number;
+  hedgeTriggered: boolean;
+  executed: boolean;
+  txHash?: string;
+  reason?: string;
+};
+
+// The operator token lives only in this browser tab (sessionStorage) and is sent with every request.
+const TOKEN_KEY = "operatorToken";
+
+export function getOperatorToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setOperatorToken(token: string) {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Storage can be blocked by the browser; the app still works without a saved token.
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getOperatorToken();
+  return token ? { "x-operator-token": token } : {};
+}
+
 async function getJson<T>(path: string, label: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
+  const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
   if (!response.ok) throw new Error(`${label} request failed: ${response.status}`);
   return response.json() as Promise<T>;
 }
 
-async function postJson<T>(path: string, label: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" } });
+async function postJson<T>(path: string, label: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body ?? {})
+  });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error((payload as { error?: string }).error ?? `${label} request failed: ${response.status}`);
   return payload as T;
 }
 
 export const getAgentConfig = () => getJson<AgentConfig>("/api/config", "Config");
+export const getCapabilities = () => getJson<Capabilities>("/api/capabilities", "Capabilities");
 export const getHistory = () => getJson<HistoryEntry[]>("/api/history", "History");
 export const getTreasury = () => getJson<Treasury>("/api/treasury", "Treasury");
 export const getIdentity = () => getJson<IdentityInfo>("/api/identity", "Identity");
@@ -109,10 +164,7 @@ export const getPnl = () => getJson<PnlSummary>("/api/pnl", "P&L");
 export const getScheduler = () => getJson<SchedulerStatus>("/api/scheduler", "Scheduler");
 export const pauseScheduler = () => postJson<SchedulerStatus>("/api/scheduler/pause", "Pause");
 export const resumeScheduler = () => postJson<SchedulerStatus>("/api/scheduler/resume", "Resume");
-
-export async function requestAgentRun() {
-  return postJson<{ ok: boolean; status: string }>("/api/run-agent", "Agent");
-}
+export const requestAgentRun = (options?: RunOptions) => postJson<RunResult>("/api/run-agent", "Agent", options);
 
 export function compactAddress(address: string) {
   return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Not configured";

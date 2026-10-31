@@ -2,6 +2,7 @@ import { FlaskConical, Zap } from "lucide-react";
 import { KpiCards } from "@/components/KpiCards";
 import { HedgeChart } from "@/components/HedgeChart";
 import { SmartInsights } from "@/components/SmartInsights";
+import { RunPanel } from "@/components/RunPanel";
 import { SchedulerCard } from "@/components/SchedulerCard";
 import { AgentTerminal } from "@/components/AgentTerminal";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,10 @@ export function Dashboard() {
           </Badge>
         )}
       </div>
-      <KpiCards />
+      <RunPanel />
+      <div className="mt-5">
+        <KpiCards />
+      </div>
       <div className="mt-5 flex flex-col gap-5 xl:flex-row">
         <HedgeChart />
         <SmartInsights />

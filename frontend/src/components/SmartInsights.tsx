@@ -17,15 +17,31 @@ type Insight = {
 };
 
 export function SmartInsights() {
-  const { config, lastRun, inflationRate, isExecuting } = useAgent();
+  const { config, lastRun, inflationRate, isExecuting, runCount } = useAgent();
   const [identity, setIdentity] = useState<IdentityInfo | null>(null);
   const [identityFailed, setIdentityFailed] = useState(false);
 
+  // Checks the registry now, after every run, and once a minute, so a short backend outage does not leave "Unknown" on screen.
   useEffect(() => {
-    getIdentity()
-      .then(setIdentity)
-      .catch(() => setIdentityFailed(true));
-  }, []);
+    let cancelled = false;
+    const check = () => {
+      getIdentity()
+        .then((value) => {
+          if (cancelled) return;
+          setIdentity(value);
+          setIdentityFailed(false);
+        })
+        .catch(() => {
+          if (!cancelled) setIdentityFailed(true);
+        });
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [runCount]);
 
   const threshold = config?.threshold;
 
@@ -48,7 +64,7 @@ export function SmartInsights() {
 
   let identityInsight: Insight;
   if (identityFailed || (identity && identity.registered === null)) {
-    identityInsight = { icon: ShieldCheck, iconTone: "text-slate-400", title: "Identity could not be checked", detail: "The ERC-8004 registry did not answer. This does not mean the wallet is unregistered.", badge: "Unknown", badgeTone: "neutral" };
+    identityInsight = { icon: ShieldCheck, iconTone: "text-slate-400", title: "Identity could not be checked", detail: "The ERC-8004 registry did not answer. This does not mean the wallet is unregistered. It will be checked again shortly.", badge: "Unknown", badgeTone: "neutral" };
   } else if (identity === null) {
     identityInsight = { icon: ShieldCheck, iconTone: "text-slate-400", title: "Checking identity…", detail: "Looking up the agent wallet in the ERC-8004 registry.", badge: "Checking", badgeTone: "neutral" };
   } else if (identity.registered) {

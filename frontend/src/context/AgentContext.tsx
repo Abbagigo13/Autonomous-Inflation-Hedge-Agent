@@ -1,6 +1,25 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ethers } from "ethers";
-import { API_BASE, getAgentConfig, getHistory, requestAgentRun, type AgentConfig, type HistoryEntry, type LogEvent } from "@/lib/api";
+import {
+  API_BASE,
+  getAgentConfig,
+  getCapabilities,
+  getHistory,
+  requestAgentRun,
+  type AgentConfig,
+  type Capabilities,
+  type HistoryEntry,
+  type LogEvent,
+  type RunOptions,
+  type RunResult
+} from "@/lib/api";
+
+export type RunOutcome = {
+  at: string;
+  trigger: number | null; // the what-if trigger used, if any
+  result?: RunResult;
+  error?: string;
+};
 
 export type AgentContextValue = {
   isLoading: boolean;
@@ -9,13 +28,16 @@ export type AgentContextValue = {
   balanceWars: string;
   logs: LogEvent[];
   config: AgentConfig | null;
+  capabilities: Capabilities | null;
   lastRun: HistoryEntry | null;
+  lastOutcome: RunOutcome | null;
   inflationRate: number | null;
   streamConnected: boolean;
   agentAddress: string;
   runCount: number;
-  runAgent: () => Promise<void>;
+  runAgent: (options?: RunOptions) => Promise<RunResult | null>;
   refreshBalances: () => Promise<void>;
+  refreshCapabilities: () => Promise<Capabilities | null>;
 };
 
 const AgentContext = createContext<AgentContextValue | null>(null);
@@ -31,7 +53,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [balanceWars, setBalanceWars] = useState("0");
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [lastRun, setLastRun] = useState<HistoryEntry | null>(null);
+  const [lastOutcome, setLastOutcome] = useState<RunOutcome | null>(null);
   const [streamConnected, setStreamConnected] = useState(false);
   const [agentAddress, setAgentAddress] = useState(import.meta.env.VITE_AGENT_WALLET_ADDRESS ?? "");
   const [runCount, setRunCount] = useState(0);
@@ -47,6 +71,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       setLastRun(entries[0] ?? null);
     } catch {
       // The backend may be offline; keep whatever we already know.
+    }
+  }, []);
+
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      const value = await getCapabilities();
+      setCapabilities(value);
+      return value;
+    } catch {
+      return null;
     }
   }, []);
 
@@ -73,7 +107,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshBalances();
     void refreshLastRun();
-  }, [refreshBalances, refreshLastRun]);
+    void refreshCapabilities();
+  }, [refreshBalances, refreshLastRun, refreshCapabilities]);
 
   useEffect(() => {
     const events = new EventSource(`${API_BASE}/api/logs`);
@@ -93,19 +128,29 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     return () => events.close();
   }, []);
 
-  const runAgent = useCallback(async () => {
-    setIsExecuting(true);
-    try {
-      await requestAgentRun();
-    } catch (error) {
-      pushUiLog(error instanceof Error ? error.message : "Unable to start agent", "error");
-    } finally {
-      setIsExecuting(false);
-      setRunCount((count) => count + 1);
-      void refreshBalances();
-      void refreshLastRun();
-    }
-  }, [pushUiLog, refreshBalances, refreshLastRun]);
+  const runAgent = useCallback(
+    async (options?: RunOptions) => {
+      setIsExecuting(true);
+      const trigger = options?.mode !== "live" && options?.thresholdOverride !== undefined ? options.thresholdOverride : null;
+      try {
+        const result = await requestAgentRun(options);
+        setLastOutcome({ at: new Date().toISOString(), trigger, result });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to start agent";
+        setLastOutcome({ at: new Date().toISOString(), trigger, error: message });
+        pushUiLog(message, "error");
+        return null;
+      } finally {
+        setIsExecuting(false);
+        setRunCount((count) => count + 1);
+        void refreshBalances();
+        void refreshLastRun();
+        void refreshCapabilities();
+      }
+    },
+    [pushUiLog, refreshBalances, refreshLastRun, refreshCapabilities]
+  );
 
   const inflationRate = lastRun ? lastRun.inflationRate : null;
 
@@ -117,15 +162,18 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       balanceWars,
       logs,
       config: agentConfig,
+      capabilities,
       lastRun,
+      lastOutcome,
       inflationRate,
       streamConnected,
       agentAddress,
       runCount,
       runAgent,
-      refreshBalances
+      refreshBalances,
+      refreshCapabilities
     }),
-    [isLoading, isExecuting, balanceUsdt, balanceWars, logs, agentConfig, lastRun, inflationRate, streamConnected, agentAddress, runCount, runAgent, refreshBalances]
+    [isLoading, isExecuting, balanceUsdt, balanceWars, logs, agentConfig, capabilities, lastRun, lastOutcome, inflationRate, streamConnected, agentAddress, runCount, runAgent, refreshBalances, refreshCapabilities]
   );
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;
 }
