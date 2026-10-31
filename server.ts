@@ -78,7 +78,7 @@ function isOperator(req: Request): boolean {
   return loopback && !req.header("x-forwarded-for");
 }
 
-// --- Hedge history, saved to data/history.json so it survives restarts ---
+// --- Hedge history, saved to a file so it survives restarts ---
 type RunSource = "manual" | "scheduled" | "public";
 
 type HistoryEntry = {
@@ -95,8 +95,10 @@ type HistoryEntry = {
   whatIfThreshold?: number;
 };
 
-const HISTORY_FILE = path.resolve("data", "history.json");
-const SEED_FILE = path.resolve("data", "history.seed.json"); // committed copy of the real executed hedges
+// Where the history lives. On a host with a volume, point HISTORY_FILE (or mount the volume at /app/data).
+const HISTORY_FILE = path.resolve(process.env.HISTORY_FILE?.trim() || path.join("data", "history.json"));
+// A committed copy of the real executed hedges. It is merged in on every start, so real swaps can never go missing.
+const SEED_FILE = path.resolve("seed", "history.seed.json");
 
 function readJsonArray(file: string): HistoryEntry[] | null {
   try {
@@ -109,7 +111,10 @@ function readJsonArray(file: string): HistoryEntry[] | null {
 }
 
 function loadHistory(): HistoryEntry[] {
-  return readJsonArray(HISTORY_FILE) ?? readJsonArray(SEED_FILE) ?? [];
+  const saved = readJsonArray(HISTORY_FILE) ?? [];
+  const seed = readJsonArray(SEED_FILE) ?? [];
+  const known = new Set(saved.map((entry) => entry.id));
+  return [...saved, ...seed.filter((entry) => !known.has(entry.id))];
 }
 
 /** Keeps every executed hedge forever and only the newest 200 other runs, so spam cannot push real hedges out. */
@@ -238,6 +243,10 @@ const scheduler = createScheduler({
 });
 
 // --- API endpoints ---
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
 
 app.get("/api/config", (_req, res) => {
   res.json({

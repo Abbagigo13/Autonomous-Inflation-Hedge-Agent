@@ -1,0 +1,13 @@
+﻿[
+    {
+        "id":  "3e62e006-ee21-42fe-82d0-cfd92ec7e24f",
+        "timestamp":  "2026-10-29T16:19:56.600Z",
+        "inflationRate":  33.54117291414029,
+        "hedgeTriggered":  true,
+        "executed":  true,
+        "txHash":  "0xcec8d8e0fb3418076737409838b167bd8cdcbe64c7c9b850c9dae2405bce0d9b",
+        "reason":  "executed",
+        "dryRun":  false,
+        "sellAmount":  "1750"
+    }
+]
