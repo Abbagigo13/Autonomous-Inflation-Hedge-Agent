@@ -4,7 +4,14 @@ import { useAgent } from "@/context/AgentContext";
 import { compactAddress } from "@/lib/api";
 
 export function Topbar({ title }: { title: string }) {
-  const { runAgent, isExecuting, agentAddress } = useAgent();
+  const { isExecuting, agentAddress } = useAgent();
+
+  // One place to run the agent: the "Try the agent" panel on the Overview page.
+  const goToPanel = () => {
+    if (window.location.hash !== "#overview") window.location.hash = "overview";
+    setTimeout(() => document.getElementById("try-agent")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+  };
+
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[.07] px-5 py-4 sm:px-8 lg:px-10">
       <div className="flex items-center gap-3">
@@ -13,9 +20,9 @@ export function Topbar({ title }: { title: string }) {
         <div className="text-sm text-slate-300">{title}</div>
       </div>
       <div className="flex items-center gap-2.5">
-        <Button onClick={() => void runAgent()} disabled={isExecuting}>
+        <Button onClick={goToPanel}>
           <Play size={14} fill="currentColor" />
-          {isExecuting ? "Running…" : "Run hedge agent"}
+          {isExecuting ? "Running…" : "Try the agent"}
         </Button>
         {agentAddress ? (
           <a

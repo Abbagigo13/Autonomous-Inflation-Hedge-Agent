@@ -29,7 +29,9 @@ export function Dashboard() {
           </Badge>
         )}
       </div>
-      <RunPanel />
+      <div id="try-agent" className="scroll-mt-6">
+        <RunPanel />
+      </div>
       <div className="mt-5">
         <KpiCards />
       </div>
