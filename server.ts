@@ -8,6 +8,7 @@ import path from "node:path";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { ethers } from "ethers";
 import { readPublicBalances, runAgentCycle } from "./src/agent.js";
+import { buildEstimate } from "./src/estimate.js";
 import { computePnl, type PnlSummary } from "./src/pnl.js";
 import { createScheduler } from "./src/scheduler.js";
 import {
@@ -219,6 +220,9 @@ function secondsUntilAllowed(ip: string): number {
   return Math.max(0, Math.ceil((last + SIMULATION_COOLDOWN_SECONDS * 1000 - Date.now()) / 1000));
 }
 
+// Simple per-visitor spacing for the plain-language calculator
+const lastEstimateByIp = new Map<string, number>();
+
 const scheduler = createScheduler({
   log: sendLog,
   runCycle: async () => {
@@ -276,6 +280,31 @@ app.get("/api/capabilities", (req, res) => {
     maxPublicLiveSwaps: MAX_PUBLIC_LIVE_SWAPS,
     publicLiveSwapsUsed: liveHedges.filter((entry) => entry.source === "public").length
   });
+});
+
+/** Plain-language calculator: real inflation plus Textile's free price preview. Nothing is signed or sent. */
+app.get("/api/estimate", async (req, res) => {
+  const pesos = Number(req.query.pesos);
+  if (!Number.isFinite(pesos) || pesos < 1 || pesos > 10_000_000) {
+    res.status(400).json({ code: "invalid-amount", error: "pesos must be a number between 1 and 10,000,000" });
+    return;
+  }
+  const visitor = req.ip ?? "unknown";
+  const now = Date.now();
+  if (now - (lastEstimateByIp.get(visitor) ?? 0) < 2000) {
+    res.status(429).json({ code: "too-fast", error: "Please wait a moment before trying again" });
+    return;
+  }
+  lastEstimateByIp.set(visitor, now);
+  if (lastEstimateByIp.size > 2000) {
+    for (const [key, at] of lastEstimateByIp) if (now - at > 60_000) lastEstimateByIp.delete(key);
+  }
+  try {
+    res.json(await buildEstimate(Math.round(pesos)));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(502).json({ code: "unavailable", error: message });
+  }
 });
 
 async function readTreasury() {

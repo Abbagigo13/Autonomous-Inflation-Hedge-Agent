@@ -1,4 +1,4 @@
-import { FlaskConical, Zap } from "lucide-react";
+import { ArrowRight, FlaskConical, Zap } from "lucide-react";
 import { KpiCards } from "@/components/KpiCards";
 import { HedgeChart } from "@/components/HedgeChart";
 import { SmartInsights } from "@/components/SmartInsights";
@@ -29,6 +29,20 @@ export function Dashboard() {
           </Badge>
         )}
       </div>
+      <a
+        href="#protect"
+        className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-mint/20 bg-mint/[.04] p-4 hover:border-mint/40"
+      >
+        <div>
+          <div className="text-sm font-semibold text-slate-100">¿Hablas español? · Plain-language calculator</div>
+          <div className="mt-0.5 text-xs text-slate-500">
+            Mira qué le pasa a tus pesos con la inflación · See what inflation does to your pesos. No wallet needed.
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-2 text-sm font-semibold text-mint">
+          Proteger mis pesos <ArrowRight size={14} />
+        </span>
+      </a>
       <div id="try-agent" className="scroll-mt-6">
         <RunPanel />
       </div>

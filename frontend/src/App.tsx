@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Sidebar, PAGES, type PageId } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { Dashboard } from "@/components/Dashboard";
+import { ProtectPage } from "@/components/ProtectPage";
 import { HistoryPage } from "@/components/HistoryPage";
 import { PnlPage } from "@/components/PnlPage";
 import { RoutesPage } from "@/components/RoutesPage";
@@ -51,6 +52,7 @@ export function App() {
           </nav>
           <div className="mx-auto max-w-[1500px] px-5 pb-10 pt-7 sm:px-8 lg:px-10">
             {page === "overview" && <Dashboard />}
+            {page === "protect" && <ProtectPage />}
             {page === "history" && <HistoryPage />}
             {page === "pnl" && <PnlPage />}
             {page === "routes" && <RoutesPage />}

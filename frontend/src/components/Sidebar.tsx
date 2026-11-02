@@ -1,11 +1,12 @@
-import { Activity, Blocks, LayoutDashboard, Radio, Scale, ShieldCheck, WalletCards } from "lucide-react";
+import { Activity, Blocks, Coins, LayoutDashboard, Radio, Scale, ShieldCheck, WalletCards } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export type PageId = "overview" | "history" | "pnl" | "routes" | "treasury" | "identity";
+export type PageId = "overview" | "protect" | "history" | "pnl" | "routes" | "treasury" | "identity";
 
 export const PAGES: { id: PageId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "protect", label: "Protect my pesos", icon: Coins },
   { id: "history", label: "Hedge history", icon: Activity },
   { id: "pnl", label: "Strategy P&L", icon: Scale },
   { id: "routes", label: "Execution routes", icon: Radio },
