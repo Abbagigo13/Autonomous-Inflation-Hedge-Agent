@@ -17,7 +17,7 @@ type Insight = {
 };
 
 export function SmartInsights() {
-  const { config, lastRun, inflationRate, isExecuting, runCount } = useAgent();
+  const { config, capabilities, lastRun, inflationRate, isExecuting, runCount } = useAgent();
   const [identity, setIdentity] = useState<IdentityInfo | null>(null);
   const [identityFailed, setIdentityFailed] = useState(false);
 
@@ -74,7 +74,13 @@ export function SmartInsights() {
   }
 
   const insights = [signal, route, identityInsight];
-  const modeText = config ? (config.isDryRun ? "Dry run · transactions are prepared, not sent" : "Live mode · transactions are sent") : "Loading mode…";
+  const modeText = !config
+    ? "Loading mode…"
+    : !config.isDryRun
+      ? "Live mode · transactions are sent"
+      : capabilities?.liveEnabled
+        ? "Simulation by default · live swaps only when requested"
+        : "Dry run · transactions are prepared, not sent";
 
   return (
     <Card className="w-full xl:w-[330px] xl:shrink-0">

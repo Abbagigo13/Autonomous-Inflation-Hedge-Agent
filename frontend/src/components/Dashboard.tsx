@@ -9,7 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { useAgent } from "@/context/AgentContext";
 
 export function Dashboard() {
-  const { isLoading, config } = useAgent();
+  const { isLoading, config, capabilities } = useAgent();
+  const liveOnRequest = config?.isDryRun === true && capabilities?.liveEnabled === true;
+  const badgeText = !config
+    ? ""
+    : !config.isDryRun
+      ? "Live mode · swaps are sent"
+      : liveOnRequest
+        ? "Simulation by default · live swaps on request"
+        : "Dry run · nothing is sent";
   return (
     <>
       <div className="mb-7 flex flex-wrap items-end justify-between gap-5">
@@ -25,7 +33,7 @@ export function Dashboard() {
         {config && (
           <Badge tone={config.isDryRun ? "info" : "warning"}>
             {config.isDryRun ? <FlaskConical size={12} /> : <Zap size={12} />}
-            {config.isDryRun ? "Dry run · nothing is sent" : "Live mode · swaps are sent"}
+            {badgeText}
           </Badge>
         )}
       </div>
