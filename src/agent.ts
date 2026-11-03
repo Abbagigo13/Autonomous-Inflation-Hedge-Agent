@@ -52,12 +52,17 @@ type ParsedQuote = {
   takerPays: bigint;
   feeAmount: string;
   expiresAt: string;
+  latestOrderDeadline: string;
   taker: string;
   reactor: string;
   spender: string;
   approval: QuoteTx;
   swap: QuoteTx;
 };
+
+// Textile reserves the wallet's wARS for a live firm quote until the quote's order deadline.
+// Until then another quote for the same funds is refused, so we do not even ask.
+let quoteHeldUntil = 0;
 
 export function getWallet(): ethers.Wallet | null {
   if (!privateKey) return null;
@@ -113,6 +118,7 @@ function parseQuote(body: unknown): ParsedQuote {
   const quote = root?.quote;
   const transactions = root?.transactions;
   if (!root || typeof root !== "object" || !quote || !transactions) throw new Error("the response has an unexpected structure");
+  const expiresAt = readString(quote.expiresAt, "quote.expiresAt");
   return {
     rfqId: typeof root.rfqId === "string" ? root.rfqId : "unknown",
     status: typeof root.status === "string" ? root.status : "unknown",
@@ -120,7 +126,8 @@ function parseQuote(body: unknown): ParsedQuote {
     buyAmount: readBigInt(quote.buyAmount, "quote.buyAmount"),
     takerPays: readBigInt(quote.takerPays, "quote.takerPays"),
     feeAmount: typeof quote.feeAmount === "string" ? quote.feeAmount : "unknown",
-    expiresAt: readString(quote.expiresAt, "quote.expiresAt"),
+    expiresAt,
+    latestOrderDeadline: typeof quote.latestOrderDeadline === "string" && quote.latestOrderDeadline.length > 0 ? quote.latestOrderDeadline : expiresAt,
     taker: readAddress(quote.taker, "quote.taker"),
     reactor: readAddress(quote.reactor, "quote.reactor"),
     spender: readAddress(quote.spender, "quote.spender"),
@@ -180,6 +187,21 @@ async function confirmTagOnChain(hash: string, label: string, log: AgentLogger):
   return tagged;
 }
 
+/** Tells Textile which transaction settled the quote. Textile calls this a courtesy: a failure here changes nothing. */
+async function reportToTextile(rfqId: string, txHash: string, log: AgentLogger): Promise<void> {
+  if (!textileApiKey || !/^[\w-]+$/.test(rfqId)) return;
+  try {
+    await axios.post(
+      `${TEXTILE_API_BASE_URL}/rfq/${encodeURIComponent(rfqId)}/submit`,
+      { txHash },
+      { headers: { Authorization: `Bearer ${textileApiKey}`, "Content-Type": "application/json" }, timeout: 20_000 }
+    );
+    log("Swap reported to Textile FX", "info");
+  } catch {
+    log("Could not report the swap to Textile FX (optional; settlement is tracked on-chain)", "info");
+  }
+}
+
 /** Makes sure the spender may move exactly `amount` wARS. The approval is tagged like every other transaction. */
 async function ensureAllowance(wallet: ethers.Wallet, spender: string, amount: bigint, log: AgentLogger, dryRun: boolean): Promise<boolean> {
   const token = new ethers.Contract(WARS_ADDRESS, ERC20_APPROVAL_ABI, wallet);
@@ -218,6 +240,13 @@ export async function executeSwap(log: AgentLogger, dryRun: boolean): Promise<Sw
     return { reason: "api-key-missing" };
   }
 
+  // A recent firm quote is still holding the wallet's wARS, so asking again would only be refused.
+  const heldFor = Math.ceil((quoteHeldUntil - Date.now()) / 1000);
+  if (heldFor > 0) {
+    log(`A recent quote is still holding the wallet's wARS · please try again in about ${heldFor} seconds`, "warning");
+    return { reason: "quote-reserved" };
+  }
+
   const amountIn = ethers.parseUnits(HEDGE_SELL_AMOUNT, 18);
   // includeAttribution is deliberately not set: Textile then returns swap data without a tag, and our own
   // ERC-8021 tag is the only (and therefore last) tag on it.
@@ -245,6 +274,10 @@ export async function executeSwap(log: AgentLogger, dryRun: boolean): Promise<Sw
       log(`Quote shape · ${describeShape(response.data)}`, "info");
       return { reason: "no-transaction" };
     }
+
+    // Textile keeps the wallet's wARS reserved for this quote until its latest order deadline.
+    const deadlineMs = parseExpiryMs(quote.latestOrderDeadline);
+    quoteHeldUntil = Number.isFinite(deadlineMs) ? deadlineMs + 3000 : Date.now() + 95_000;
 
     // Quote summary (public values only; the signature, claim token and encoded order are never logged)
     const sellNumber = Number(ethers.formatUnits(quote.sellAmount, 18));
@@ -331,11 +364,22 @@ export async function executeSwap(log: AgentLogger, dryRun: boolean): Promise<Sw
     log(`Hedge transaction submitted · ${sent.hash}`, "success");
     await sent.wait();
     log(`Hedge transaction confirmed · ${sent.hash}`, "success");
+    quoteHeldUntil = 0; // the quote has been used, so the wallet's wARS is no longer held for it
     await confirmTagOnChain(sent.hash, "Swap", log);
+    await reportToTextile(quote.rfqId, sent.hash, log);
     return { txHash: sent.hash, reason: "executed" };
   } catch (error: unknown) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
+      const details = error.response?.data?.error?.details;
+      const committed = typeof details?.committed === "string" && /^\d+$/.test(details.committed) ? BigInt(details.committed) : 0n;
+      // Not a real shortage: part of the wallet's wARS is reserved for an earlier quote that has not expired yet.
+      if (status === 400 && details?.reason === "insufficient_funds" && committed > 0n) {
+        const waitSeconds = typeof details.retryAfterMs === "number" ? Math.ceil(details.retryAfterMs / 1000) : 60;
+        quoteHeldUntil = Date.now() + waitSeconds * 1000;
+        log(`Textile is still holding part of the wallet's wARS for an earlier quote · please try again in about ${waitSeconds} seconds`, "warning");
+        return { reason: "quote-reserved" };
+      }
       const errorDetails = JSON.stringify(error.response?.data || error.message, null, 2);
       log(`Textile FX request failed${status ? ` (${status})` : ""}`, "error");
       log(`Full API Error: ${errorDetails}`, "warning");

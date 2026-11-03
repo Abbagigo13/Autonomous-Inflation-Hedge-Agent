@@ -8,6 +8,7 @@ const REASONS: Record<string, ReasonInfo> = {
   executed: { label: "Executed", tone: "success", detail: "The hedge transaction was sent and confirmed." },
   "dry-run-prepared": { label: "Dry run complete", tone: "info", detail: "A tagged swap was prepared but not sent, because dry-run mode is on." },
   "below-threshold": { label: "No hedge needed", tone: "neutral", detail: "Inflation was below the trigger, so the agent did nothing." },
+  "quote-reserved": { label: "Wallet busy", tone: "info", detail: "A recent quote is still holding the wallet's wARS. This is normal: wait about a minute and run again." },
   "quote-rejected": { label: "Quote rejected", tone: "warning", detail: "Textile FX rejected the quote request. The terminal shows the exact reason." },
   "no-transaction": { label: "Quote not usable", tone: "warning", detail: "Textile FX answered, but the quote was missing something needed to build the transaction." },
   "quote-unsafe": { label: "Quote not safe", tone: "warning", detail: "A safety check on Textile's quote failed, so nothing was sent. The terminal shows which check." },
